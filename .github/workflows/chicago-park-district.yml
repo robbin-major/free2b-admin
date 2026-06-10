@@ -1,0 +1,28 @@
+name: Chicago Park District Event Import
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10 */3 * *"
+
+jobs:
+  import-events:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run Chicago Park District importer
+        env:
+          FREE2B_EMAIL: ${{ secrets.FREE2B_EMAIL }}
+          FREE2B_PASSWORD: ${{ secrets.FREE2B_PASSWORD }}
+        run: node scripts/uploadParkDistrictEvent.js
