@@ -1,17 +1,17 @@
 require("dotenv").config();
 
 const axios = require("axios");
-
 const { initializeApp } = require("firebase/app");
-
 const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
-
 const {
   getFirestore,
   collection,
   addDoc,
   updateDoc,
   doc,
+  getDocs,
+  query,
+  where,
 } = require("firebase/firestore");
 
 const firebaseConfig = {
@@ -28,6 +28,14 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const DATA_URL = "https://data.cityofchicago.org/resource/tn7v-6rnw.json";
+
+const PARK_DISTRICT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/free2b-b6221.appspot.com/o/file%2FScreen%20Shot%202026-04-20%20at%2011.54.46%20PM.png1776752667201?alt=media&token=27883c26-1bac-470d-a937-8b1bc3e15a60";
+
+const PARK_DISTRICT_CATEGORY = {
+  categoryId: "3nrKkVtQTUFY32R5ykY8",
+  categoryName: "Chicago Parks District",
+};
 
 function formatParkDistrictDate(dateString) {
   const eventDate = new Date(dateString);
@@ -49,18 +57,132 @@ function formatParkDistrictDate(dateString) {
   };
 }
 
-async function getOneFreeEvent() {
+function isFreeActiveEvent(event) {
+  const fee = Number(event.fee || 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const startDate = new Date(event.start_date);
+
+  return fee === 0 && startDate >= today;
+}
+
+function cleanDescription(event) {
+  return [
+    "Free Chicago Park District Event",
+    event.description || "",
+    event.date_notes || "",
+    event.age_range ? `Age range: ${event.age_range}` : "",
+    event.information_link?.url || "",
+  ].filter(Boolean);
+}
+
+async function reverseGeocode(location) {
+  if (!location?.coordinates) {
+    return null;
+  }
+
+  const [lon, lat] = location.coordinates;
+
+  try {
+    const response = await axios.get(
+      "https://nominatim.openstreetmap.org/reverse",
+      {
+        params: {
+          format: "jsonv2",
+          lat,
+          lon,
+        },
+        headers: {
+          "User-Agent": "Free2B event importer robbin.major@gmail.com",
+        },
+      }
+    );
+
+    const address = response.data.address || {};
+
+    return {
+      address: [address.house_number, address.road]
+        .filter(Boolean)
+        .join(" "),
+      city: address.city || "Chicago",
+      state: address.state || "Illinois",
+      zipCode: address.postcode || "",
+      country: address.country || "United States",
+      fullAddress: response.data.display_name || "",
+    };
+  } catch (error) {
+    console.log("Reverse geocode failed:", error.message);
+    return null;
+  }
+}
+
+async function alreadyUploaded(sourceId) {
+  const eventRef = collection(db, "event");
+  const q = query(
+    eventRef,
+    where("source", "==", "Chicago Park District"),
+    where("sourceId", "==", sourceId)
+  );
+
+  const snapshot = await getDocs(q);
+  return !snapshot.empty;
+}
+
+async function getFreeUpcomingEvents() {
   const response = await axios.get(DATA_URL, {
     params: {
-      $limit: 20,
-      $order: "start_date ASC",
+      $limit: 1000,
+      $order: "end_date ASC",
     },
   });
 
-  return response.data.find((event) => Number(event.fee || 0) === 0);
+  return response.data.filter(isFreeActiveEvent).slice(0, 100);
 }
 
-async function uploadEvent() {
+function buildEventData(parkEvent, locationData) {
+  const realStart = new Date(parkEvent.start_date);
+  const nextDate = new Date();
+  nextDate.setHours(realStart.getHours(), realStart.getMinutes(), 0, 0);
+
+const { formattedDate, formattedTime, formattedStartDate } =
+  formatParkDistrictDate(parkEvent.start_date);
+
+  return {
+    createdAt: new Date().getTime(),
+
+    source: "Chicago Park District",
+    sourceId: parkEvent.activity_id,
+
+    startDate: formattedStartDate,
+    startDateCheck: formattedDate,
+    startTimeCheck: formattedTime,
+
+    title: parkEvent.title,
+
+    description: cleanDescription(parkEvent),
+
+    type: "Citywide Event",
+    categoryType: "Citywide Event",
+
+    category: [PARK_DISTRICT_CATEGORY],
+
+    address: locationData?.address || "Chicago Park District",
+    city: locationData?.city || "Chicago",
+    state: locationData?.state || "Illinois",
+    country: locationData?.country || "United States",
+    zipCode: locationData?.zipCode || "",
+
+    image: PARK_DISTRICT_IMAGE,
+
+    uid: "free2b-automation",
+
+    status: "APPROVAL",
+  };
+}
+
+async function uploadEvents() {
   try {
     await signInWithEmailAndPassword(
       auth,
@@ -70,69 +192,53 @@ async function uploadEvent() {
 
     console.log("Logged into Firebase.");
 
-    const parkEvent = await getOneFreeEvent();
+    const events = await getFreeUpcomingEvents();
 
-    if (!parkEvent) {
-      console.log("No free event found.");
+    if (!events.length) {
+      console.log("No upcoming free events found.");
       return;
     }
 
-    const { formattedDate, formattedTime, formattedStartDate } =
-      formatParkDistrictDate(parkEvent.start_date);
+    console.log(`Found ${events.length} upcoming free events.`);
 
-    const eventData = {
-      createdAt: new Date().getTime(),
+    let uploadedCount = 0;
+    let skippedCount = 0;
 
-      startDate: "21-05-2026 10:00 AM",
-      startDateCheck: "21-05-2026" ,
-      startTimeCheck: "10:00 AM",
+    for (const parkEvent of events) {
+      const sourceId = parkEvent.activity_id;
 
-      title: parkEvent.title,
+      if (await alreadyUploaded(sourceId)) {
+        console.log(`SKIPPED duplicate: ${parkEvent.title}`);
+        skippedCount++;
+        continue;
+      }
 
-      description: [
-        "Free Chicago Park District Event",
-        parkEvent.description || "",
-        parkEvent.date_notes || "",
-        parkEvent.information_link?.url || "",
-      ],
+      const locationData = await reverseGeocode(parkEvent.location);
 
-      type: "Citywide Event",
-      categoryType: "Citywide Event",
+      const eventData = buildEventData(parkEvent, locationData);
 
-      category: [
-        {
-          categoryId: "3nrKkVtQTUFY32R5ykY8",
-          categoryName: "Chicago Parks District",
-        },
-      ],
+      const response = await addDoc(collection(db, "event"), eventData);
 
-      city: "Chicago",
-      state: "Illinois",
-      country: "United States",
-      zipCode: "60609",
-      address: "704 W 42nd St",
+      await updateDoc(doc(db, "event", response.id), {
+        evntId: response.id,
+      });
 
-      image:
-        "https://firebasestorage.googleapis.com/v0/b/free2b-b6221.appspot.com/o/file%2FScreen%20Shot%202026-04-21%20at%201.31.13%20AM.png1776753313606?alt=media&token=d7cb4c0b-3165-4a9d-b8a3-2ba18f84ca6c",
+      console.log(`UPLOADED: ${parkEvent.title}`);
+      console.log(`Address: ${eventData.address}, ${eventData.city}, ${eventData.state} ${eventData.zipCode}`);
+      console.log(`ID: ${response.id}`);
 
-      uid: "rgBipis6paQqZaR0l0ItnQwEy2L2",
+      uploadedCount++;
 
-      source: "Chicago Park District",
-      status: "APPROVAL",
-    };
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
 
-    const response = await addDoc(collection(db, "event"), eventData);
-
-    await updateDoc(doc(db, "event", response.id), {
-      evntId: response.id,
-    });
-
-    console.log("SUCCESS!");
-    console.log("Uploaded event ID:", response.id);
+    console.log("DONE.");
+    console.log(`Uploaded: ${uploadedCount}`);
+    console.log(`Skipped: ${skippedCount}`);
   } catch (error) {
     console.error("UPLOAD ERROR:");
-    console.error(error.message);
+    console.error(error.response?.data || error.message);
   }
 }
 
-uploadEvent();
+uploadEvents();
