@@ -29,6 +29,9 @@ const db = getFirestore(app);
 
 const DATA_URL = "https://data.cityofchicago.org/resource/tn7v-6rnw.json";
 
+const PARK_DISTRICT_DEFAULT_IMAGE =
+  "https://www.chicagoparkdistrict.com/themes/custom/chiparks/images/default_images/Default_Image.png";
+
 const PARK_DISTRICT_CATEGORY = {
   categoryId: "3nrKkVtQTUFY32R5ykY8",
   categoryName: "Chicago Parks District",
@@ -76,7 +79,7 @@ function cleanDescription(event) {
 }
 
 function getEventImage(event) {
-  return event.image_link?.url || "";
+  return event.image_link?.url || PARK_DISTRICT_DEFAULT_IMAGE;
 }
 
 async function reverseGeocode(location) {
