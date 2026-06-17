@@ -85,6 +85,8 @@ const EventDetailsPage = () => {
   const status = detailsEvent?.status;
   const currentOption = options.find((option) => option.value === status);
   console.log("🚀  EventDetailsPage  status:", status);
+  const getEventImage = (event) =>
+    event?.image || event?.imageLink || event?.image_link?.url || EvenImage;
   const getFilter = async () => {
     setDataLoader(true);
     const kurzRef = collection(db, `event`);
@@ -375,12 +377,11 @@ const EventDetailsPage = () => {
                       <Row className="row-sm">
                         <Col xs={12} sm={12} lg={6}>
                           <img
-                            src={
-                              detailsEvent?.image
-                                ? detailsEvent?.image
-                                : EvenImage
-                            }
+                            src={getEventImage(detailsEvent)}
                             alt="image"
+                            onError={(event) => {
+                              event.currentTarget.src = EvenImage;
+                            }}
                             style={{
                               width: "-webkit-fill-available",
                               height: "280px",

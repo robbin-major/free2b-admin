@@ -723,6 +723,9 @@ const Users = () => {
     return new Date(year, month - 1, day, hours, minutes);
   };
 
+  const getEventImage = (event) =>
+    event?.image || event?.imageLink || event?.image_link?.url || EvenImage;
+
   const columns = [
     {
       name: <b>Events</b>,
@@ -739,7 +742,7 @@ const Users = () => {
           >
             <img
               className="w-full h-full object-cover center"
-              src={row?.image || EvenImage}
+              src={getEventImage(row)}
               alt={row?.title || "Event"}
               onError={(event) => {
                 event.currentTarget.src = EvenImage;

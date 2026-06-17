@@ -29,9 +29,6 @@ const db = getFirestore(app);
 
 const DATA_URL = "https://data.cityofchicago.org/resource/tn7v-6rnw.json";
 
-const PARK_DISTRICT_IMAGE =
-  "https://firebasestorage.googleapis.com/v0/b/free2b-b6221.appspot.com/o/file%2FScreen%20Shot%202026-04-20%20at%2011.54.46%20PM.png1776752667201?alt=media&token=27883c26-1bac-470d-a937-8b1bc3e15a60";
-
 const PARK_DISTRICT_CATEGORY = {
   categoryId: "3nrKkVtQTUFY32R5ykY8",
   categoryName: "Chicago Parks District",
@@ -76,6 +73,10 @@ function cleanDescription(event) {
     event.age_range ? `Age range: ${event.age_range}` : "",
     event.information_link?.url || "",
   ].filter(Boolean);
+}
+
+function getEventImage(event) {
+  return event.image_link?.url || "";
 }
 
 async function reverseGeocode(location) {
@@ -174,7 +175,7 @@ const { formattedDate, formattedTime, formattedStartDate } =
     country: locationData?.country || "United States",
     zipCode: locationData?.zipCode || "",
 
-    image: PARK_DISTRICT_IMAGE,
+    image: getEventImage(parkEvent),
 
     uid: "free2b-automation",
 
