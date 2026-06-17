@@ -11,6 +11,7 @@ import AddEventModal from "./AddEventModal";
 import * as Yup from "yup";
 import { useFormik } from "formik";
 import DeleteModal from "./DeleteModal";
+import EvenImage from "../../../assets/img/demoEventImg.webp";
 import { Country, State, City } from "country-state-city";
 import {
   addDoc,
@@ -738,7 +739,11 @@ const Users = () => {
           >
             <img
               className="w-full h-full object-cover center"
-              src={row?.image}
+              src={row?.image || EvenImage}
+              alt={row?.title || "Event"}
+              onError={(event) => {
+                event.currentTarget.src = EvenImage;
+              }}
               style={{ height: "100px", width: "80px", objectFit: "cover" }}
             />
           </div>
