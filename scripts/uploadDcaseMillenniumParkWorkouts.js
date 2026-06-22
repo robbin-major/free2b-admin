@@ -329,14 +329,33 @@ async function fetchScheduleHtml() {
     return fs.readFileSync(htmlFile, "utf8");
   }
 
-  const response = await fetch(SOURCE_URL, {
-    headers: {
-      "User-Agent": "Free2B DCASE importer robbin.major@gmail.com",
-    },
-  });
+  let response;
+
+  try {
+    response = await fetch(SOURCE_URL, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Free2BImporter/1.0",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        Referer: "https://www.chicago.gov/",
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      `DCASE page request failed: ${error.message}. ` +
+        "If chicago.gov blocks Codespaces, save the page HTML locally and rerun with --html-file=/path/to/millennium_park_workouts.html."
+    );
+  }
 
   if (!response.ok) {
-    throw new Error(`DCASE page request failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `DCASE page request failed: ${response.status} ${response.statusText}. ` +
+        "If chicago.gov blocks Codespaces, save the page HTML locally and rerun with --html-file=/path/to/millennium_park_workouts.html."
+    );
   }
 
   return response.text();
@@ -347,6 +366,15 @@ async function uploadEvents() {
   let skippedCount = 0;
   let failedCount = 0;
   const missingFields = new Set();
+
+  const html = await fetchScheduleHtml();
+  const events = extractEvents(html);
+
+  if (!events.length) {
+    throw new Error(
+      "No DCASE workout events were parsed. Stopping before any Firestore writes."
+    );
+  }
 
   if (!dryRun) {
     initializeFirebase();
@@ -359,9 +387,6 @@ async function uploadEvents() {
 
     console.log("Logged into Firebase.");
   }
-
-  const html = await fetchScheduleHtml();
-  const events = extractEvents(html);
 
   console.log(
     `Found ${events.length} ${includePast ? "total" : "upcoming"} DCASE workout events.`
